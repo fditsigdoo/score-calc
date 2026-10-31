@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>점수 계산기</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fff;--card:#f2f4f6;--text:#191f28;--sub:#6b7684;--blue:#3182f6;--blueD:#1b64da;--err:#f04452;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#17171c;--card:#2a2a33;--text:#f2f4f6;--sub:#9ea4ae}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#17171c;--card:#2a2a33;--text:#f2f4f6;--sub:#9ea4ae}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:Pretendard,"Noto Sans KR",-apple-system,"Apple SD Gothic Neo",sans-serif;-webkit-text-size-adjust:100%}
+.screen{max-width:480px;margin:0 auto;padding:28px 20px 130px}
+.screen[hidden]{display:none}
+h1{font-size:27px;line-height:1.35;margin:8px 0 28px;font-weight:700;white-space:pre-line}
+.label{font-size:14px;color:var(--sub);margin:0 0 8px}
+input{width:100%;box-sizing:border-box;font:inherit;font-size:17px;color:var(--text);background:var(--card);border:2px solid transparent;border-radius:14px;padding:16px;outline:none}
+input:focus{border-color:var(--blue)}
+.row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:10px}
+.x{width:48px;border:0;border-radius:14px;background:var(--card);color:var(--sub);font-size:20px;cursor:pointer}
+.add{width:100%;margin-top:4px;padding:15px;border:0;border-radius:14px;background:var(--card);color:var(--blue);font:inherit;font-size:16px;font-weight:500;cursor:pointer}
+.err{color:var(--err);font-size:15px;min-height:22px;margin:14px 0 0}
+.bottom{position:fixed;left:0;right:0;bottom:0;padding:12px 20px calc(14px + env(safe-area-inset-bottom,0px));background:var(--bg)}
+.cta{display:block;width:100%;max-width:440px;margin:0 auto;height:56px;border:0;border-radius:16px;background:var(--blue);color:#fff;font:inherit;font-size:17px;font-weight:700;cursor:pointer}
+.cta:active{background:var(--blueD)}
+.cta.ghost{background:var(--card);color:var(--text);margin-top:8px}
+.big{font-size:56px;font-weight:700;color:var(--blue);margin:6px 0 10px}
+.desc{font-size:17px;line-height:1.6;color:var(--sub);margin:0}
+.hist{margin-top:36px}
+.hist h2{font-size:18px;margin:0 0 10px}
+.item{display:flex;justify-content:space-between;padding:14px 0;font-size:16px}
+.item span:first-child{color:var(--sub)}
+.link{border:0;background:none;color:var(--sub);font:inherit;font-size:14px;padding:8px 0;cursor:pointer}
+</style>
+</head>
+<body>
+
+<section class="screen" id="s1">
+  <h1>목표 점수를 받으려면<br>시험을 몇 점 맞아야 할까요?</h1>
+
+  <p class="label">목표 점수</p>
+  <input id="target" type="number" inputmode="decimal" value="90">
+
+  <p class="label" style="margin-top:24px">수행평가 (점수 / 반영 비율 %)</p>
+  <div id="rows"></div>
+  <button class="add" onclick="addRow()">+ 수행평가 추가</button>
+
+  <p class="label" style="margin-top:24px">시험 반영 비율 % (비워 두면 남은 비율)</p>
+  <input id="exam" type="number" inputmode="decimal" placeholder="예: 60">
+  <p class="err" id="err"></p>
+
+  <div class="hist" id="histBox" hidden>
+    <h2>최근 기록</h2>
+    <div id="hist"></div>
+    <button class="link" onclick="clearHist()">기록 지우기</button>
+  </div>
+
+  <div class="bottom"><button class="cta" onclick="calc()">계산하기</button></div>
+</section>
+
+<section class="screen" id="s2" hidden>
+  <h1 id="rTitle"></h1>
+  <div class="big" id="rNum"></div>
+  <p class="desc" id="rDesc"></p>
+  <div class="bottom">
+    <button class="cta" onclick="goBack()">다시 계산하기</button>
+  </div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+let hist = [];
+try { hist = JSON.parse(localStorage.getItem("hist") || "[]"); } catch (e) { hist = []; }
+function saveHist() { try { localStorage.setItem("hist", JSON.stringify(hist)); } catch (e) {} }
+
+function addRow(s, r) {
+  const d = document.createElement("div");
+  d.className = "row";
+  d.innerHTML = '<input class="sc" type="number" inputmode="decimal" placeholder="점수">' +
+                '<input class="ra" type="number" inputmode="decimal" placeholder="비율">' +
+                '<button class="x" aria-label="삭제">×</button>';
+  d.querySelector(".x").onclick = () => d.remove();
+  if (s !== undefined) d.querySelector(".sc").value = s;
+  if (r !== undefined) d.querySelector(".ra").value = r;
+  $("rows").appendChild(d);
+}
+
+function calc() {
+  const target = parseFloat($("target").value);
+  let sum = 0, used = 0, n = 0;
+  if (isNaN(target) || target < 0 || target > 100) return fail("목표 점수는 0~100 사이로 입력해 주세요");
+  for (const row of document.querySelectorAll(".row")) {
+    const a = row.querySelector(".sc").value, b = row.querySelector(".ra").value;
+    if (a === "" && b === "") continue;
+    const s = parseFloat(a), r = parseFloat(b);
+    if (isNaN(s) || isNaN(r)) return fail("점수와 비율을 둘 다 입력해 주세요");
+    if (s < 0 || s > 100) return fail("점수는 0~100 사이로 입력해 주세요");
+    if (r <= 0 || r > 100) return fail("비율은 1~100 사이로 입력해 주세요");
+    sum += s * r / 100; used += r; n++;
+  }
+  if (n === 0) return fail("수행평가를 하나 이상 입력해 주세요");
+  const ex = $("exam").value;
+  const exam = ex === "" ? 100 - used : parseFloat(ex);
+  if (isNaN(exam) || exam <= 0 || exam > 100) return fail("시험 비율은 1~100 사이로 입력해 주세요");
+  if (Math.abs(used + exam - 100) > 0.001) return fail("수행평가 " + used + "% + 시험 " + exam + "% = " + (used + exam) + "%예요. 합이 100%가 되어야 해요");
+  fail("");
+  const avg = Math.round((target - sum) / (exam / 100) * 10) / 10;
+  const need = Math.round(avg * 2 * 10) / 10;   // 중간+기말 합 (두 시험 비율이 같다고 가정)
+
+  hist.unshift({ t: target, n: n, need: need });
+  hist = hist.slice(0, 10);
+  saveHist();
+
+  $("rTitle").textContent = "목표 " + target + "점까지\n중간 + 기말 합";
+  $("rNum").textContent = need > 0 ? need : "0";
+  $("rDesc").textContent = need <= 0
+    ? "이미 목표를 넘었어요. 시험을 못 봐도 괜찮아요."
+    : "중간·기말고사 합이 " + need + "점(평균 " + avg + "점)이어야 해요. 두 시험의 반영 비율이 같다고 계산한 값이에요.";
+  show("s2");
+}
+
+function fail(m) { $("err").textContent = m; return false; }
+function show(id) { $("s1").hidden = id !== "s1"; $("s2").hidden = id !== "s2"; window.scrollTo(0, 0); if (id === "s1") renderHist(); }
+function goBack() { show("s1"); }
+
+function renderHist() {
+  $("histBox").hidden = hist.length === 0;
+  $("hist").innerHTML = hist.map(h =>
+    '<div class="item"><span>목표 ' + h.t + '점 · 수행평가 ' + h.n + '개</span><span>' + h.need + '점</span></div>').join("");
+}
+function clearHist() { hist = []; saveHist(); renderHist(); }
+
+addRow(); addRow();
+renderHist();
+</script>
+</body>
+</html>
